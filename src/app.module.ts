@@ -16,7 +16,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TerminusModule } from '@nestjs/terminus';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { PrometheusModule } from '@willsoto/nestjs-prometheus';
+// import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 
 @Module({
   imports: [
@@ -30,7 +30,7 @@ import { PrometheusModule } from '@willsoto/nestjs-prometheus';
     ApplicationModule,
     TerminusModule,
     HttpModule,
-    PrometheusModule.register(),
+    // PrometheusModule.register(),
     LoggerModule,
   ],
   controllers: [HelloController, HealthController],

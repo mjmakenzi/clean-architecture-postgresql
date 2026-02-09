@@ -11,7 +11,7 @@ A **NestJS** backend built with **Clean Architecture** and **CQRS**. It provides
 | Problem | How This Repo Addresses It |
 |--------|-----------------------------|
 | **Business rules scattered across HTTP and DB code** | **Domain layer** holds entities and pure business logic (e.g. “can this user be created?”, “is this user an admin?”). No frameworks or DB here—only rules that matter to the product. |
-| **Hard to change storage or APIs without breaking logic** | **Repository interfaces** live in the domain; concrete implementations (e.g. Mongoose) live in infrastructure. You can swap MongoDB for another store or add new entrypoints without touching domain or application use cases. |
+| **Hard to change storage or APIs without breaking logic** | **Repository interfaces** live in the domain; concrete implementations (e.g. TypeORM/PostgreSQL in this repo) live in infrastructure. You can swap PostgreSQL for another store or add new entrypoints without touching domain or application use cases. |
 | **Registration = Auth + Profile in one transaction is brittle** | **CQRS + Saga**: `CreateAuthUserCommand` creates the auth record and publishes `AuthUserCreatedEvent`; a **saga** reacts and runs `CreateProfileCommand`. If profile creation fails, a **compensation saga** runs `DeleteAuthUserCommand` so you don’t end up with auth without profile. |
 | **Sensitive data (e.g. email) in DB at rest** | **Infrastructure**: Auth model encrypts email (AES-256-CBC) on write and uses a **blind index** (HMAC) for search, so storage and indexes don’t expose plaintext emails. |
 | **Inconsistent API responses and errors** | **Application layer**: Global exception filter and response interceptor shape errors and success payloads (codes, messages, requestId) so clients get a predictable contract. |
@@ -49,14 +49,14 @@ The project follows **Clean Architecture** (dependency rule: inner layers do not
                                                  │
                     ┌────────────────────────────▼─────────────────────────────┐
                     │                 INFRASTRUCTURE (Adapters)                 │
-                    │  Mongoose models, Repository implementations, DB,        │
+                    │  TypeORM entities, Repository implementations, DB,       │
                     │  Health checks, Logger                                   │
                     └─────────────────────────────────────────────────────────┘
 ```
 
 - **Domain**: Defines *what* the system does (entities, rules, repository contracts). No imports from application or infrastructure.
 - **Application**: Orchestrates use cases; uses domain entities and repository *interfaces*; dispatches commands and events. Implementations of repositories are injected (e.g. via Nest `@Inject('IAuthRepository')`).
-- **Infrastructure**: Implements repositories (Mongoose), persistence, and cross-cutting concerns (health, logging). Depends on domain (and application only for Nest wiring).
+- **Infrastructure**: Implements repositories (TypeORM/PostgreSQL), persistence, and cross-cutting concerns (health, logging). Depends on domain (and application only for Nest wiring).
 - **API**: HTTP surface; translates requests into DTOs and calls application services or (indirectly) command bus. Depends on application, not on infrastructure or domain details.
 
 ---
@@ -78,7 +78,7 @@ The project follows **Clean Architecture** (dependency rule: inner layers do not
 | Runtime | Node.js |
 | Framework | NestJS 11 |
 | Language | TypeScript 5.x |
-| Database | MongoDB (Mongoose 9) |
+| Database | PostgreSQL (TypeORM) |
 | Auth | Passport (JWT, Local, Google OAuth 2.0), JWT access/refresh |
 | CQRS / Events | @nestjs/cqrs (commands, events, sagas) |
 | Validation | class-validator, class-transformer |
@@ -107,10 +107,10 @@ src/
 │   ├── interfaces/        # IAuthRepository, IProfileRepository
 │   └── services/           # AuthDomainService, ProfileDomainService (pure rules)
 ├── infrastructure/         # Adapters and technical details
-│   ├── database/           # Mongo connection, providers
+│   ├── database/           # PostgreSQL/TypeORM connection, providers
 │   ├── health/             # Terminus health checks
 │   ├── logger/             # Logger module
-│   ├── models/             # Mongoose schemas (Auth, Profile)
+│   ├── models/             # TypeORM entities (Auth, Profile)
 │   └── repository/         # AuthRepository, ProfileRepository (implement interfaces)
 ├── app.module.ts           # Root module (API, application, infra, global filter/interceptor)
 ├── constants.ts            # Env-derived config (DB, JWT, Google, encryption)
@@ -124,7 +124,7 @@ src/
 ### Prerequisites
 
 - Node.js (LTS, e.g. 20+)
-- MongoDB (local or Atlas)
+- PostgreSQL (local or managed)
 - (Optional) Google OAuth client for Google login
 
 ### Install
@@ -142,8 +142,12 @@ Create a `.env` in the project root. Required and optional variables:
 PORT=4000
 NODE_ENV=development
 
-# MongoDB (required for DB operations)
-MONGODB_URI=mongodb://localhost:27017/clean_service
+# PostgreSQL (required for DB operations)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_NAME=clean_arch_db
 
 # JWT (use strong secrets in production)
 JWT_SECRET=your-jwt-secret

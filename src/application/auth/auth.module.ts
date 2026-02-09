@@ -7,7 +7,6 @@ import { AuthService } from '@application/services/auth.service';
 import { JWT_EXPIRATION_TIME, JWT_SECRET } from '@constants';
 import { AuthDomainService } from '@domain/services/auth-domain.service';
 import { DatabaseModule } from '@infrastructure/database/database.module';
-import { modelProviders } from '@infrastructure/models';
 import { AuthRepository } from '@infrastructure/repository/auth.repository';
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
@@ -38,7 +37,6 @@ export const CommandHandlers = [CreateAuthUserHandler, DeleteAuthUserHandler];
       provide: 'IAuthRepository',
       useClass: AuthRepository,
     },
-    ...modelProviders,
     ...CommandHandlers,
   ],
   exports: [AuthService, AuthDomainService, 'IAuthRepository'],

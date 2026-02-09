@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
-import { modelProviders } from '@infrastructure/models';
 import { ProfileRepository } from '@infrastructure/repository/profile.repository';
 import { CreateProfileHandler } from '@application/profile/command/handler/create-profile.handler';
 import { ProfileService } from '@application/services/profile.service';
@@ -20,7 +19,6 @@ export const Sagas = [RegistrationSaga];
       provide: 'IProfileRepository',
       useClass: ProfileRepository,
     },
-    ...modelProviders,
     ...CommandHandlers,
     ...Sagas,
   ],

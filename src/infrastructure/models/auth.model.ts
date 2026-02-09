@@ -1,15 +1,21 @@
-import * as mongoose from 'mongoose';
-import * as bcrypt from 'bcrypt';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  BeforeInsert,
+  BeforeUpdate,
+} from 'typeorm';
 import * as crypto from 'crypto';
-import { EMAIL_BLIND_INDEX_SECRET, EMAIL_ENCRYPTION_KEY } from '@constants';
+import * as bcrypt from 'bcrypt';
 import { Role } from '@domain/entities/enums/role.enum';
+import { EMAIL_ENCRYPTION_KEY, EMAIL_BLIND_INDEX_SECRET } from '@constants';
 
+// --- Encryption Helper (Same as before) ---
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
 
-// --- Encryption Helpers ---
 const encrypt = (text: string): string => {
-  if (!EMAIL_ENCRYPTION_KEY) throw new Error('Encryption key missing');
+  if (!EMAIL_ENCRYPTION_KEY) return text;
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(
     ALGORITHM,
@@ -36,66 +42,85 @@ const decrypt = (text: string): string => {
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     return decrypted.toString();
-  } catch (_error) {
+  } catch (e) {
     return text;
   }
 };
 
-export const createBlindIndex = (text: string): string => {
-  if (!EMAIL_BLIND_INDEX_SECRET) throw new Error('Blind index secret missing');
-  return crypto
-    .createHmac('sha256', EMAIL_BLIND_INDEX_SECRET)
-    .update(text)
-    .digest('hex');
-};
+// --- TypeORM Entity ---
+@Entity('auth')
+export class AuthEntity {
+  @PrimaryColumn('varchar')
+  id: string;
 
-// --- Mongoose Schema ---
-export const AuthSchema = new mongoose.Schema(
-  {
-    id: { type: String, required: true },
-    googleId: { type: String, unique: true, sparse: true },
-    email: { type: String, required: true, get: decrypt }, // Decrypt on read
-    emailHash: { type: String, unique: true, index: true, sparse: true }, // For searching
-    password: { type: String, required: false, select: false },
-    role: { type: [String], required: true, enum: Role, default: [Role.USER] },
-    currentHashedRefreshToken: { type: String, select: false },
-    lastLoginAt: { type: Date },
-    deletedAt: { type: Date, default: null },
-  },
-  {
-    toJSON: { getters: true },
-    toObject: { getters: true },
-    timestamps: true,
-  },
-);
+  @Column({ nullable: true, unique: true })
+  googleId: string;
 
-// Middleware: Encrypt on Save
-AuthSchema.pre('save', async function (next) {
-  if (this.isModified('password') && this.password) {
-    this.password = await bcrypt.hash(this.password, 10);
-  }
+  // Transformer handles encryption/decryption automatically!
+  @Column({
+    type: 'text',
+    transformer: {
+      to: (value: string) => encrypt(value), // Encrypt on save
+      from: (value: string) => decrypt(value), // Decrypt on read
+    },
+  })
+  email: string;
 
-  if (this.isModified('email')) {
-    const plainEmail = this.email;
-    if (plainEmail) {
-      this.emailHash = createBlindIndex(plainEmail);
-      this.email = encrypt(plainEmail);
+  @Column({ nullable: true, unique: true })
+  emailHash: string; // Blind Index
+
+  @Column({ nullable: true })
+  password?: string;
+
+  @Column({
+    type: 'enum',
+    enum: Role,
+    array: true, // Postgres supports arrays
+    default: [Role.USER],
+  })
+  role: Role[];
+
+  @Column({ nullable: true })
+  currentHashedRefreshToken?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastLoginAt?: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  updatedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deletedAt?: Date;
+
+  // --- Hooks ---
+  @BeforeInsert()
+  @BeforeUpdate()
+  async hashPassword() {
+    if (this.password && !this.password.startsWith('$2b$')) {
+      // Simple check to avoid re-hashing already hashed passwords
+      this.password = await bcrypt.hash(this.password, 10);
     }
   }
-  next;
-});
 
-// Interface for the Document
-export interface Auth extends mongoose.Document {
-  readonly id: string;
-  googleId?: string;
-  readonly email: string;
-  readonly role: Role[];
-  readonly emailHash?: string;
-  readonly password?: string;
-  readonly currentHashedRefreshToken?: string;
-  readonly lastLoginAt?: Date;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-  readonly deletedAt?: Date | null;
+  @BeforeInsert()
+  @BeforeUpdate()
+  generateBlindIndex() {
+    if (this.email && EMAIL_BLIND_INDEX_SECRET) {
+      // Note: We use the raw email here because the transformer runs *after* hooks?
+      // Actually, in TypeORM, hooks run on the object properties.
+      // Since our 'email' property is plain text (decrypted) in the object,
+      // we can hash it easily here.
+      this.emailHash = crypto
+        .createHmac('sha256', EMAIL_BLIND_INDEX_SECRET)
+        .update(this.email)
+        .digest('hex');
+    }
+  }
 }

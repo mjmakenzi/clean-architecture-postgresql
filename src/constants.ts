@@ -5,9 +5,7 @@ dotenv.config();
 
 // Database Constants
 export const DB_PROVIDER = 'DbConnectionToken';
-export const PROFILE_MODEL_PROVIDER = 'ProfileModelProvider';
-export const AUTH_MODEL_PROVIDER = 'AuthModelProvider';
-export const SERVICE = 'DB_MONGO_SERVICE';
+export const SERVICE = 'DB_POSTGRES_SERVICE';
 export const DATABASE_SERVICE =
   process.env.DATABASE_SERVICE || 'DATABASE_SERVICE';
 
@@ -17,10 +15,12 @@ export const APP_PORT = parseInt(process.env.PORT || '4000', 10);
 export const APP_HOST = process.env.APP_HOST || '0.0.0.0';
 export const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// MongoDB Constants
-export const MONGODB_URI =
-  process.env.MONGODB_URI || 'mongodb://localhost:27017/nestjs';
-export const MONGO_PORT = parseInt(process.env.MONGO_PORT || '27017', 10);
+// Postgresql Variables
+export const DB_HOST = process.env.DB_HOST || 'localhost';
+export const DB_PORT = parseInt(process.env.DB_PORT || '5432', 10);
+export const DB_USERNAME = process.env.DB_USERNAME || 'postgres';
+export const DB_PASSWORD = process.env.DB_PASSWORD || 'postgres';
+export const DB_NAME = process.env.DB_NAME || 'clean_arch_db';
 
 // JWT Constants
 export const JWT_SECRET = process.env.JWT_SECRET || 'your-default-secret';

@@ -1,83 +1,71 @@
-import { AUTH_MODEL_PROVIDER } from '@constants';
-import { AuthUser } from '@domain/entities/Auth';
-import { IAuthRepository } from '@domain/interfaces/repositories/auth-repository.interface';
-import { Auth, createBlindIndex } from '@infrastructure/models/auth.model';
 import { Inject, Injectable } from '@nestjs/common';
-import { Model } from 'mongoose';
+import { DataSource, DeepPartial, IsNull, Repository } from 'typeorm';
+import { DB_PROVIDER } from '@constants';
+import { IAuthRepository } from '@domain/interfaces/repositories/auth-repository.interface';
+import { AuthUser } from '@domain/entities/Auth';
+import { AuthEntity } from '@infrastructure/models/auth.model';
+import * as crypto from 'crypto';
+import { EMAIL_BLIND_INDEX_SECRET } from '@constants';
 
 @Injectable()
 export class AuthRepository implements IAuthRepository {
-  constructor(
-    @Inject(AUTH_MODEL_PROVIDER) private readonly authModel: Model<Auth>,
-  ) {}
+  private readonly repository: Repository<AuthEntity>;
+
+  constructor(@Inject(DB_PROVIDER) dataSource: DataSource) {
+    this.repository = dataSource.getRepository(AuthEntity);
+  }
 
   async create(authData: Partial<AuthUser>): Promise<AuthUser> {
-    const newAuth = new this.authModel(authData);
-    const savedAuth = await newAuth.save();
-    return savedAuth.toObject() as AuthUser;
+    const entity = this.repository.create(authData as DeepPartial<AuthEntity>); // Creates instance
+    const saved = await this.repository.save(entity); // Hooks run here (password hash, blind index)
+    return saved as unknown as AuthUser;
   }
 
-  async findByEmail(
-    email: string,
-    withPassword?: boolean,
-  ): Promise<AuthUser | null> {
-    const emailHash = createBlindIndex(email);
-    const query = this.authModel.findOne({ emailHash, deletedAt: null });
-    if (withPassword) {
-      query.select('+password');
-    }
-    const auth = await query.exec();
-    return auth ? (auth.toObject() as AuthUser) : null;
+  async findByEmail(email: string): Promise<AuthUser | null> {
+    // Search by blind index hash
+    const emailHash = crypto
+      .createHmac('sha256', EMAIL_BLIND_INDEX_SECRET!)
+      .update(email)
+      .digest('hex');
+
+    const found = await this.repository.findOneBy({
+      emailHash,
+      deletedAt: IsNull(),
+    });
+    return found as unknown as AuthUser;
   }
 
-  async findById(id: string, withPassword?: boolean): Promise<AuthUser | null> {
-    const query = this.authModel
-      .findOne({ id, deletedAt: null })
-      .select('+currentHashedRefreshToken');
-
-    if (withPassword) {
-      query.select('+password');
-    }
-
-    const auth = await query.exec();
-    return auth ? (auth.toObject() as AuthUser) : null;
+  async findById(id: string): Promise<AuthUser | null> {
+    const found = await this.repository.findOneBy({ id, deletedAt: IsNull() });
+    return found as unknown as AuthUser;
   }
 
   async findByGoogleId(googleId: string): Promise<AuthUser | null> {
-    const auth = await this.authModel
-      .findOne({ googleId, deletedAt: null })
-      .exec();
-    return auth ? (auth.toObject() as AuthUser) : null;
+    const found = await this.repository.findOneBy({
+      googleId,
+      deletedAt: IsNull(),
+    });
+    return found as unknown as AuthUser;
   }
 
   async update(id: string, authData: Partial<AuthUser>): Promise<AuthUser> {
-    const updatedAuth = await this.authModel
-      .findOneAndUpdate(
-        { id, deletedAt: null },
-        { $set: authData },
-        { new: true },
-      )
-      .exec();
+    // TypeORM update is different: preload checks existence + merges
+    const existing = await this.repository.findOneBy({ id });
+    if (!existing) throw new Error('User not found');
 
-    if (!updatedAuth) {
-      throw new Error('Auth user not found');
-    }
-
-    return updatedAuth.toObject() as AuthUser;
+    const updated = this.repository.merge(
+      existing,
+      authData as DeepPartial<AuthEntity>,
+    );
+    const saved = await this.repository.save(updated);
+    return saved as unknown as AuthUser;
   }
 
   async delete(id: string): Promise<void> {
-    await this.authModel
-      .updateOne({ id, deletedAt: null }, { $set: { deletedAt: new Date() } })
-      .exec();
+    await this.repository.update(id, { deletedAt: new Date() });
   }
 
   async removeRefreshToken(id: string): Promise<void> {
-    await this.authModel
-      .updateOne(
-        { id, deletedAt: null },
-        { $set: { currentHashedRefreshToken: null } },
-      )
-      .exec();
+    await this.repository.update(id, { currentHashedRefreshToken: undefined }); // or null
   }
 }

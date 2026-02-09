@@ -1,51 +1,32 @@
-import * as mongoose from 'mongoose';
-import { faker } from '@faker-js/faker';
+import { Entity, Column, PrimaryColumn } from 'typeorm';
 
-export const ProfileSchema = new mongoose.Schema(
-  {
-    id: { type: String, required: true, unique: true },
-    authId: { type: String, required: true, unique: true },
-    name: String,
-    lastname: String,
-    age: Number,
-    deletedAt: { type: Date, default: null },
-  },
-  {
-    timestamps: true,
-  },
-);
+@Entity('profile')
+export class ProfileEntity {
+  @PrimaryColumn('varchar')
+  id: string;
 
-export interface Profile extends mongoose.Document {
-  readonly id: string;
-  readonly authId: string;
-  readonly name: string;
-  readonly lastname?: string;
-  readonly age?: number;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-  readonly deletedAt?: Date | null;
-}
-
-export class ProfileModel {
-  constructor(profile: ProfileModel | any) {
-    this.id = faker.string.uuid();
-    this.authId = profile.authId;
-    this.name = profile.name;
-    this.lastname = profile.lastname;
-    this.age = profile.age;
-    this.deletedAt = null;
-  }
-
-  id?: string;
+  @Column({ unique: true })
   authId: string;
-  name: string;
-  lastname?: string;
-  age?: number;
-  createdAt?: Date;
-  updatedAt?: Date;
-  deletedAt?: Date | null;
 
-  save(): ProfileModel {
-    return this;
-  }
+  @Column()
+  name: string;
+
+  @Column()
+  lastname: string;
+
+  @Column({ default: 0 })
+  age: number;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+    onUpdate: 'CURRENT_TIMESTAMP',
+  })
+  updatedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deletedAt?: Date;
 }
