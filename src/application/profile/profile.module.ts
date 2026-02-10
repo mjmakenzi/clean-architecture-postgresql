@@ -6,12 +6,18 @@ import { ProfileService } from '@application/services/profile.service';
 import { DatabaseModule } from '@infrastructure/database/database.module';
 import { RegistrationSaga } from '@application/auth/sagas/registration.saga';
 import { ProfileDomainService } from '@domain/services/profile-domain.service';
+import { ProfileEntity } from '@infrastructure/entities/profile.entity';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 export const CommandHandlers = [CreateProfileHandler];
 export const Sagas = [RegistrationSaga];
 
 @Module({
-  imports: [CqrsModule, DatabaseModule],
+  imports: [
+    CqrsModule,
+    DatabaseModule,
+    TypeOrmModule.forFeature([ProfileEntity]),
+  ],
   providers: [
     ProfileService,
     ProfileDomainService,

@@ -1,71 +1,123 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, DeepPartial, IsNull, Repository } from 'typeorm';
-import { DB_PROVIDER } from '@constants';
-import { IAuthRepository } from '@domain/interfaces/repositories/auth-repository.interface';
 import { AuthUser } from '@domain/entities/Auth';
-import { AuthEntity } from '@infrastructure/models/auth.model';
-import * as crypto from 'crypto';
-import { EMAIL_BLIND_INDEX_SECRET } from '@constants';
+import { IAuthRepository } from '@domain/interfaces/repositories/auth-repository.interface';
+import { AuthEntity } from '@infrastructure/entities/auth.entity';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DeepPartial, FindOptionsWhere, IsNull, Repository } from 'typeorm';
 
 @Injectable()
 export class AuthRepository implements IAuthRepository {
-  private readonly repository: Repository<AuthEntity>;
-
-  constructor(@Inject(DB_PROVIDER) dataSource: DataSource) {
-    this.repository = dataSource.getRepository(AuthEntity);
-  }
+  constructor(
+    @InjectRepository(AuthEntity)
+    private readonly authRepository: Repository<AuthEntity>,
+  ) {}
 
   async create(authData: Partial<AuthUser>): Promise<AuthUser> {
-    const entity = this.repository.create(authData as DeepPartial<AuthEntity>); // Creates instance
-    const saved = await this.repository.save(entity); // Hooks run here (password hash, blind index)
-    return saved as unknown as AuthUser;
+    const newAuth = this.authRepository.create(
+      authData as DeepPartial<AuthEntity>,
+    );
+    const savedAuth = await this.authRepository.save(newAuth);
+    return this.mapToAuthUser(savedAuth);
   }
 
-  async findByEmail(email: string): Promise<AuthUser | null> {
-    // Search by blind index hash
-    const emailHash = crypto
-      .createHmac('sha256', EMAIL_BLIND_INDEX_SECRET!)
-      .update(email)
-      .digest('hex');
+  async findByEmail(
+    email: string,
+    withPassword?: boolean,
+  ): Promise<AuthUser | null> {
+    const queryBuilder = this.authRepository
+      .createQueryBuilder('auth')
+      .where('auth.email = :email', { email });
 
-    const found = await this.repository.findOneBy({
-      emailHash,
-      deletedAt: IsNull(),
-    });
-    return found as unknown as AuthUser;
+    if (withPassword) {
+      queryBuilder.addSelect('auth.password');
+      queryBuilder.addSelect('auth.currentHashedRefreshToken');
+    }
+
+    const auth = await queryBuilder.getOne();
+    return auth ? this.mapToAuthUser(auth) : null;
   }
 
-  async findById(id: string): Promise<AuthUser | null> {
-    const found = await this.repository.findOneBy({ id, deletedAt: IsNull() });
-    return found as unknown as AuthUser;
+  async findById(id: string, withPassword?: boolean): Promise<AuthUser | null> {
+    const queryBuilder = this.authRepository
+      .createQueryBuilder('auth')
+      .addSelect('auth.currentHashedRefreshToken')
+      .where('auth.id = :id', { id });
+
+    if (withPassword) {
+      queryBuilder.addSelect('auth.password');
+    }
+
+    const auth = await queryBuilder.getOne();
+
+    return auth ? this.mapToAuthUser(auth) : null;
   }
 
   async findByGoogleId(googleId: string): Promise<AuthUser | null> {
-    const found = await this.repository.findOneBy({
-      googleId,
+    const auth = await this.authRepository.findOne({ where: { googleId } });
+    return auth ? this.mapToAuthUser(auth) : null;
+  }
+
+  async findByAppleId(appleId: string): Promise<AuthUser | null> {
+    const where: FindOptionsWhere<AuthEntity> = {
+      appleId,
       deletedAt: IsNull(),
-    });
-    return found as unknown as AuthUser;
+    };
+
+    const auth = await this.authRepository.findOne({ where });
+    return auth ? this.mapToAuthUser(auth) : null;
   }
 
   async update(id: string, authData: Partial<AuthUser>): Promise<AuthUser> {
-    // TypeORM update is different: preload checks existence + merges
-    const existing = await this.repository.findOneBy({ id });
-    if (!existing) throw new Error('User not found');
+    const criteria: FindOptionsWhere<AuthEntity> = {
+      id,
+      deletedAt: IsNull(),
+    };
 
-    const updated = this.repository.merge(
-      existing,
+    const result = await this.authRepository.update(
+      criteria,
       authData as DeepPartial<AuthEntity>,
     );
-    const saved = await this.repository.save(updated);
-    return saved as unknown as AuthUser;
+
+    if (result.affected === 0) {
+      throw new Error('Auth user not found');
+    }
+
+    const updatedAuth = await this.findById(id);
+    if (!updatedAuth) {
+      throw new Error('Auth user not found after update');
+    }
+
+    return updatedAuth;
   }
 
   async delete(id: string): Promise<void> {
-    await this.repository.update(id, { deletedAt: new Date() });
+    await this.authRepository.softDelete({ id });
   }
 
   async removeRefreshToken(id: string): Promise<void> {
-    await this.repository.update(id, { currentHashedRefreshToken: undefined }); // or null
+    const criteria: FindOptionsWhere<AuthEntity> = {
+      id,
+      deletedAt: IsNull(),
+    };
+
+    await this.authRepository.update(criteria, {
+      currentHashedRefreshToken: undefined,
+    });
+  }
+
+  private mapToAuthUser(authEntity: AuthEntity): AuthUser {
+    return {
+      id: authEntity.id,
+      email: authEntity.email,
+      password: authEntity.password || '',
+      googleId: authEntity.googleId,
+      appleId: authEntity.appleId,
+      role: authEntity.role,
+      currentHashedRefreshToken: authEntity.currentHashedRefreshToken,
+      lastLoginAt: authEntity.lastLoginAt,
+      createdAt: authEntity.createdAt,
+      updatedAt: authEntity.updatedAt,
+      deletedAt: authEntity.deletedAt ?? null,
+    };
   }
 }

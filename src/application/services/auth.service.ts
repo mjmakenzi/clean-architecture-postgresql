@@ -55,6 +55,8 @@ export class AuthService {
     const profileId = this.profileDomainService.generateProfileId();
     const context = { module: 'AuthService', method: 'register' };
 
+    console.log(authId);
+
     await this.commandBus.execute(
       new CreateAuthUserCommand(registerDto, authId, profileId),
     );

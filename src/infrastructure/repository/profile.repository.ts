@@ -1,58 +1,108 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, DeepPartial, IsNull, Repository } from 'typeorm';
-import { DB_PROVIDER } from '@constants';
-import { IProfileRepository } from '@domain/interfaces/repositories/profile-repository.interface';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DeepPartial, FindOptionsWhere, IsNull, Repository } from 'typeorm';
 import { Profile } from '@domain/entities/Profile';
-import { ProfileEntity } from '@infrastructure/models/profile.model';
 import { Role } from '@domain/entities/enums/role.enum';
+import { IProfileRepository } from '@domain/interfaces/repositories/profile-repository.interface';
+import { ProfileEntity } from '@infrastructure/entities/profile.entity';
+
+export type ProfileResponse = Profile & {
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
 
 @Injectable()
 export class ProfileRepository implements IProfileRepository {
-  private readonly repository: Repository<ProfileEntity>;
-
-  constructor(@Inject(DB_PROVIDER) dataSource: DataSource) {
-    this.repository = dataSource.getRepository(ProfileEntity);
-  }
+  constructor(
+    @InjectRepository(ProfileEntity)
+    private readonly profileRepository: Repository<ProfileEntity>,
+  ) {}
 
   async create(profile: Partial<Profile>): Promise<Profile> {
-    const entity = this.repository.create(
+    const newProfile = this.profileRepository.create(
       profile as DeepPartial<ProfileEntity>,
     );
-    const saved = await this.repository.save(entity);
-    return saved as unknown as Profile;
-  }
-
-  async findById(id: string): Promise<Profile | null> {
-    const found = await this.repository.findOneBy({ id, deletedAt: IsNull() });
-    return found as unknown as Profile;
-  }
-
-  async findByAuthId(authId: string): Promise<Profile | null> {
-    const found = await this.repository.findOneBy({
-      authId,
-      deletedAt: IsNull(),
-    });
-    return found as unknown as Profile;
+    const savedProfile = await this.profileRepository.save(newProfile);
+    return this.mapToProfile(savedProfile);
   }
 
   async findAll(): Promise<Profile[]> {
-    return (await this.repository.findBy({
-      deletedAt: IsNull(),
-    })) as unknown as Profile[];
+    const profiles = await this.profileRepository.find({
+      relations: ['auth'],
+    });
+    return profiles.map((profile) => this.mapToProfile(profile));
+  }
+
+  async findById(id: string): Promise<Profile | null> {
+    const profile = await this.profileRepository.findOne({
+      where: { id },
+      relations: ['auth'],
+    });
+    return profile ? this.mapToProfile(profile) : null;
+  }
+
+  async findByAuthId(authId: string): Promise<Profile | null> {
+    const profile = await this.profileRepository.findOne({
+      where: { authId },
+      relations: ['auth'],
+    });
+    return profile ? this.mapToProfile(profile) : null;
   }
 
   async findByRole(role: Role): Promise<Profile[]> {
-    // Complex query: Join Profile -> Auth to check Role
-    // For now return empty or implement QueryBuilder if needed
-    return [];
+    const profiles = await this.profileRepository.find({
+      relations: ['auth'],
+      where: {
+        auth: {
+          role: role,
+        },
+      },
+    });
+    return profiles.map((profile) => this.mapToProfile(profile));
   }
 
-  async update(id: string, profile: Partial<Profile>): Promise<Profile> {
-    await this.repository.update(id, profile as DeepPartial<ProfileEntity>);
-    return this.findById(id) as Promise<Profile>;
+  async update(id: string, profileData: Partial<Profile>): Promise<Profile> {
+    const criteria: FindOptionsWhere<ProfileEntity> = {
+      id,
+      deletedAt: IsNull(),
+    };
+
+    const updateResult = await this.profileRepository.update(
+      criteria,
+      profileData as DeepPartial<ProfileEntity>,
+    );
+
+    if (updateResult.affected === 0) {
+      throw new Error('Profile not found');
+    }
+
+    const updatedProfile = await this.profileRepository.findOne({
+      where: { id },
+      relations: ['auth'],
+    });
+
+    if (!updatedProfile) {
+      throw new Error('Profile not found');
+    }
+
+    return this.mapToProfile(updatedProfile);
   }
 
   async delete(id: string): Promise<void> {
-    await this.repository.update(id, { deletedAt: new Date() });
+    await this.profileRepository.softDelete({ id });
+  }
+
+  private mapToProfile(profileEntity: ProfileEntity): Profile {
+    return {
+      id: profileEntity.id,
+      authId: profileEntity.authId,
+      name: profileEntity.name,
+      lastname: profileEntity.lastname,
+      age: profileEntity.age,
+      createdAt: profileEntity.createdAt,
+      updatedAt: profileEntity.updatedAt,
+      deletedAt: profileEntity.deletedAt ?? null,
+    };
   }
 }
