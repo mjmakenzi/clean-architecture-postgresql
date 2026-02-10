@@ -8,6 +8,8 @@ export class AuthUser {
   appleId?: string;
   role: Role[];
   currentHashedRefreshToken?: string | null;
+  isTwoFactorEnabled: boolean;
+  twoFactorSecret?: string | null;
   lastLoginAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;

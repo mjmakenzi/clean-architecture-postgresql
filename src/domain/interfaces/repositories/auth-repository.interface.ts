@@ -11,4 +11,6 @@ export interface IAuthRepository {
   update(id: string, user: Partial<AuthUser>): Promise<AuthUser>;
   delete(id: string): Promise<void>;
   removeRefreshToken(userId: string): Promise<void>;
+  setTwoFactorSecret(id: string, secret: string): Promise<void>;
+  turnOnTwoFactor(id: string): Promise<void>;
 }

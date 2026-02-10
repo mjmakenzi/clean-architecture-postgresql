@@ -60,6 +60,7 @@ export class AuthDomainService {
         externalData.provider === 'google'
           ? externalData.providerId
           : undefined,
+      isTwoFactorEnabled: false,
     };
 
     return newUser;
@@ -185,6 +186,7 @@ export class AuthDomainService {
       email: userData.email,
       password: userData.password,
       role: [Role.USER],
+      isTwoFactorEnabled: false,
     };
 
     return newUser;

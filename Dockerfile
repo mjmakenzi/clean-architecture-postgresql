@@ -2,10 +2,10 @@ FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json npm-lock.yaml ./
 
 RUN corepack enable \
-  && pnpm install --frozen-lockfile
+  && npm install --frozen-lockfile
 
 COPY . .
 

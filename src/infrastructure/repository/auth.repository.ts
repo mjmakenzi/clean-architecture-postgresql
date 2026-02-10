@@ -1,6 +1,7 @@
 import { AuthUser } from '@domain/entities/Auth';
 import { IAuthRepository } from '@domain/interfaces/repositories/auth-repository.interface';
 import { AuthEntity } from '@infrastructure/entities/auth.entity';
+import { encrypt } from '@infrastructure/utils/encryption.utils';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, FindOptionsWhere, IsNull, Repository } from 'typeorm';
@@ -11,6 +12,20 @@ export class AuthRepository implements IAuthRepository {
     @InjectRepository(AuthEntity)
     private readonly authRepository: Repository<AuthEntity>,
   ) {}
+
+  async setTwoFactorSecret(id: string, secret: string): Promise<void> {
+    // TODO: Use your encryption.util here!
+    const encryptedSecret = encrypt(secret);
+
+    await this.authRepository.update(
+      { id },
+      { twoFactorSecret: encryptedSecret },
+    );
+  }
+
+  async turnOnTwoFactor(id: string): Promise<void> {
+    await this.authRepository.update({ id }, { isTwoFactorEnabled: true });
+  }
 
   async create(authData: Partial<AuthUser>): Promise<AuthUser> {
     const newAuth = this.authRepository.create(
@@ -118,6 +133,8 @@ export class AuthRepository implements IAuthRepository {
       createdAt: authEntity.createdAt,
       updatedAt: authEntity.updatedAt,
       deletedAt: authEntity.deletedAt ?? null,
+      twoFactorSecret: authEntity.twoFactorSecret,
+      isTwoFactorEnabled: authEntity.isTwoFactorEnabled,
     };
   }
 }

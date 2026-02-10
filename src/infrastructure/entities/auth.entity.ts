@@ -22,6 +22,12 @@ export class AuthEntity extends SoftDeletableEntity {
   @Column({ name: 'password', select: false, nullable: true })
   password?: string;
 
+  @Column({ name: 'two_factor_secret', nullable: true })
+  twoFactorSecret?: string;
+
+  @Column({ name: 'is_two_factor_enabled', default: false })
+  isTwoFactorEnabled: boolean;
+
   @Column({ name: 'google_id', unique: true, nullable: true })
   googleId?: string;
 
